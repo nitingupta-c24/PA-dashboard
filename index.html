@@ -1,0 +1,371 @@
+<!-- START DASHBOARD: save as index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Cars24 DLS — Recreated Dashboard</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<style>
+:root{
+  --bg:#0b0e14; --surface:#121620; --card:#161c28; --border:#1e2738;
+  --accent:#00d4aa; --accent2:#4f8ef7; --accent3:#f4a535; --text:#e8edf5; --muted:#7a8ba0;
+}
+*{box-sizing:border-box}
+body{font-family:"DM Mono", monospace;background:var(--bg);color:var(--text);margin:0;padding:0;}
+.header{padding:18px 28px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.title{font-family:'Syne',sans-serif;font-size:18px}
+.controls{padding:12px 28px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+select,multi-select,input[type="range"]{background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px}
+.container{padding:18px 28px;display:grid;gap:14px}
+.kpi-row{display:flex;gap:12px;flex-wrap:wrap}
+.kpi{background:var(--card);padding:12px;border-radius:8px;min-width:140px;border:1px solid var(--border)}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hbar-list{display:flex;flex-direction:column;gap:8px}
+.hbar-item{display:flex;align-items:center;gap:10px}
+.hbar-label{width:100px;text-align:right;color:var(--muted);font-size:12px}
+.hbar-track{flex:1;background:var(--border);height:20px;border-radius:4px;position:relative}
+.hbar-fill{height:100%;border-radius:4px}
+.table{background:var(--card);padding:8px;border-radius:8px;overflow:auto;}
+.small{font-size:12px;color:var(--muted)}
+.top-actions{display:flex;gap:8px;align-items:center}
+.upload-btn{background:transparent;border:1px dashed var(--border);padding:8px;border-radius:6px;color:var(--muted)}
+.btn{background:var(--accent);border:none;padding:8px 10px;border-radius:6px;color:#000;font-weight:700;cursor:pointer}
+.note{font-size:12px;color:var(--muted)}
+@media (max-width:900px){ .chart-grid{grid-template-columns:1fr} .hbar-label{display:none} }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">Cars24 DLS — Analytics (Recreated)</div>
+    <div class="small">Uses DLS CSV export (map columns if needed)</div>
+  </div>
+  <div class="top-actions">
+    <div id="record-count" class="note">No data loaded</div>
+    <button id="exportCsv" class="btn" style="display:none">Export filtered CSV</button>
+  </div>
+</div>
+
+<div class="controls">
+  <label class="small">Upload CSV (Cars24 DLS): <input id="file-input" type="file" accept=".csv,.txt"/></label>
+
+  <div>
+    <div class="small">State</div>
+    <select id="filter-state" multiple size="1" style="min-width:160px"></select>
+  </div>
+
+  <div>
+    <div class="small">Decile</div>
+    <select id="filter-decile" multiple size="1" style="min-width:120px"></select>
+  </div>
+
+  <div>
+    <div class="small">Make</div>
+    <select id="filter-make" multiple size="1" style="min-width:140px"></select>
+  </div>
+
+  <div>
+    <div class="small">Fuel</div>
+    <select id="filter-fuel" multiple size="1" style="min-width:120px"></select>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:center">
+    <div class="small">Offer ₹</div>
+    <input id="offer-min" type="number" placeholder="min" style="width:90px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px"/>
+    <input id="offer-max" type="number" placeholder="max" style="width:90px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px"/>
+  </div>
+
+  <div style="margin-left:auto">
+    <div class="small">Reset Filters</div>
+    <button id="resetFilters" class="upload-btn">Reset</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="small">Records</div><div id="kpi-total" style="font-size:20px">—</div></div>
+    <div class="kpi"><div class="small">Avg Offer</div><div id="kpi-offer" style="font-size:20px">—</div></div>
+    <div class="kpi"><div class="small">Avg Income</div><div id="kpi-income" style="font-size:20px">—</div></div>
+    <div class="kpi"><div class="small">Avg CIBIL</div><div id="kpi-cibil" style="font-size:20px">—</div></div>
+    <div class="kpi"><div class="small">Avg Tenor (mo)</div><div id="kpi-tenor" style="font-size:20px">—</div></div>
+  </div>
+
+  <div class="chart-grid">
+    <div class="table" style="min-height:280px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>Top States by Applications</strong><div class="small">Top 12 by count</div></div>
+        <div class="small" id="filter-info">Showing all</div>
+      </div>
+      <div style="margin-top:10px" id="state-bars" class="hbar-list"></div>
+    </div>
+
+    <div class="table">
+      <div><strong>Risk Decile Distribution</strong><div class="small">Applications & Avg Offer</div></div>
+      <div style="height:260px;margin-top:10px"><canvas id="decile-chart"></canvas></div>
+    </div>
+
+    <div class="table">
+      <div><strong>Offer Amount Distribution</strong></div>
+      <div style="height:220px;margin-top:10px"><canvas id="offer-dist-chart"></canvas></div>
+    </div>
+
+    <div class="table">
+      <div><strong>Fuel / Cap Reason</strong></div>
+      <div style="display:flex;gap:12px;margin-top:10px">
+        <div style="flex:1;height:200px"><canvas id="fuel-chart"></canvas></div>
+        <div style="flex:1;height:200px"><canvas id="cap-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="table">
+      <div><strong>Top Makes</strong><div class="small">Top 8</div></div>
+      <div id="make-bars" style="margin-top:10px" class="hbar-list"></div>
+    </div>
+
+    <div class="table">
+      <div><strong>State Performance Table</strong></div>
+      <div style="max-height:260px;overflow:auto;margin-top:10px">
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead style="color:var(--muted)">
+            <tr><th style="text-align:left">State</th><th>Count</th><th>Avg Offer</th><th>Avg Income</th><th>Avg CIBIL</th></tr>
+          </thead>
+          <tbody id="state-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="table">
+      <div><strong>Profile / Income Source</strong></div>
+      <div style="display:flex;gap:12px;margin-top:10px">
+        <div style="flex:1;height:180px"><canvas id="profile-chart"></canvas></div>
+        <div style="flex:1;height:180px"><canvas id="source-chart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* --------------------------
+   Field map — adjust if CSV headers differ
+   -------------------------- */
+const fieldMap = {
+  state: 'state',
+  decile: 'decile',
+  fuel: 'fuel',
+  income_source: 'income_source',
+  foir_bucket: 'foir_bucket',
+  profile: 'profile',
+  cap_reason: 'cap_reason',
+  make: 'make',
+  offer_amount: 'offer_amount',
+  income: 'income',
+  cibil: 'cibil',
+  tenor: 'tenor'
+};
+
+/* Color palette (kept similar to your sample) */
+const COLORS = ['#00d4aa','#4f8ef7','#f4a535','#e05c7a','#a78bfa','#fb923c','#34d399','#f472b6'];
+const chartDefaults = () => ({ plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#1a2233'}}, y:{grid:{color:'#1a2233'}}}});
+
+/* Data containers */
+let ALL_ROWS = []; // array of objects
+let FILTERS = {
+  state: new Set(),
+  decile: new Set(),
+  make: new Set(),
+  fuel: new Set(),
+  offerMin: null,
+  offerMax: null
+};
+
+/* Utils */
+function fmtL(v){ if(v==null || isNaN(v)) return '—'; if(v>=10000000) return (v/10000000).toFixed(1)+'Cr'; if(v>=100000) return (v/100000).toFixed(1)+'L'; if(v>=1000) return (v/1000).toFixed(0)+'K'; return v; }
+function avg(arr){ return arr && arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function toNum(v){ if(v===null||v==='') return null; v = (''+v).replace(/[^0-9.-]/g,''); const n=parseFloat(v); return isNaN(n)?null:n; }
+
+/* --- Parse CSV --- */
+document.getElementById('file-input').addEventListener('change', (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  Papa.parse(f, {header:true,skipEmptyLines:true,complete: (res)=>{
+    ALL_ROWS = res.data.map(r=>{
+      return {
+        state: r[fieldMap.state] ?? '',
+        decile: r[fieldMap.decile] ?? '',
+        fuel: r[fieldMap.fuel] ?? '',
+        income_source: r[fieldMap.income_source] ?? '',
+        foir_bucket: r[fieldMap.foir_bucket] ?? '',
+        profile: r[fieldMap.profile] ?? '',
+        cap_reason: r[fieldMap.cap_reason] ?? '',
+        make: r[fieldMap.make] ?? '',
+        offer_amount: toNum(r[fieldMap.offer_amount]),
+        income: toNum(r[fieldMap.income]),
+        cibil: toNum(r[fieldMap.cibil]),
+        tenor: toNum(r[fieldMap.tenor])
+      };
+    });
+    initializeFilters();
+    redraw();
+    document.getElementById('exportCsv').style.display='inline-block';
+  }});
+});
+
+/* --- Filter helpers --- */
+function uniqueValues(col){
+  const s = new Set(); ALL_ROWS.forEach(r=>{ if(r[col]) s.add(r[col]); }); return Array.from(s).sort();
+}
+function initializeFilters(){
+  // populate selects
+  const stateEl = document.getElementById('filter-state');
+  const decileEl = document.getElementById('filter-decile');
+  const makeEl = document.getElementById('filter-make');
+  const fuelEl = document.getElementById('filter-fuel');
+  stateEl.innerHTML = ''; decileEl.innerHTML=''; makeEl.innerHTML=''; fuelEl.innerHTML='';
+  uniqueValues('state').forEach(v=>stateEl.appendChild(new Option(v,v)));
+  uniqueValues('decile').forEach(v=>decileEl.appendChild(new Option(v,v)));
+  uniqueValues('make').slice(0,80).forEach(v=>makeEl.appendChild(new Option(v,v)));
+  uniqueValues('fuel').forEach(v=>fuelEl.appendChild(new Option(v,v)));
+
+  // events
+  [stateEl,decileEl,makeEl,fuelEl].forEach(el=>el.addEventListener('change', ()=>{
+    FILTERS.state = new Set(Array.from(document.getElementById('filter-state').selectedOptions).map(o=>o.value));
+    FILTERS.decile = new Set(Array.from(document.getElementById('filter-decile').selectedOptions).map(o=>o.value));
+    FILTERS.make = new Set(Array.from(document.getElementById('filter-make').selectedOptions).map(o=>o.value));
+    FILTERS.fuel = new Set(Array.from(document.getElementById('filter-fuel').selectedOptions).map(o=>o.value));
+    redraw();
+  }));
+
+  document.getElementById('offer-min').addEventListener('input', e=>{ FILTERS.offerMin = toNum(e.target.value); redraw(); });
+  document.getElementById('offer-max').addEventListener('input', e=>{ FILTERS.offerMax = toNum(e.target.value); redraw(); });
+  document.getElementById('resetFilters').addEventListener('click', ()=>{
+    document.getElementById('filter-state').selectedIndex=-1;
+    document.getElementById('filter-decile').selectedIndex=-1;
+    document.getElementById('filter-make').selectedIndex=-1;
+    document.getElementById('filter-fuel').selectedIndex=-1;
+    document.getElementById('offer-min').value=''; document.getElementById('offer-max').value='';
+    FILTERS = { state:new Set(), decile:new Set(), make:new Set(), fuel:new Set(), offerMin:null, offerMax:null };
+    redraw();
+  });
+}
+
+/* --- Filtering --- */
+function getFilteredRows(){
+  return ALL_ROWS.filter(r=>{
+    if(FILTERS.state.size && !FILTERS.state.has(r.state)) return false;
+    if(FILTERS.decile.size && !FILTERS.decile.has(r.decile)) return false;
+    if(FILTERS.make.size && !FILTERS.make.has(r.make)) return false;
+    if(FILTERS.fuel.size && !FILTERS.fuel.has(r.fuel)) return false;
+    if(FILTERS.offerMin != null && (r.offer_amount==null || r.offer_amount < FILTERS.offerMin)) return false;
+    if(FILTERS.offerMax != null && (r.offer_amount==null || r.offer_amount > FILTERS.offerMax)) return false;
+    return true;
+  });
+}
+
+/* --- Chart / UI builders --- */
+let charts = {};
+function makeChart(id, cfg){
+  const ctx = document.getElementById(id).getContext('2d');
+  if(charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, cfg);
+}
+
+function redraw(){
+  const rows = getFilteredRows();
+  document.getElementById('record-count').textContent = `${rows.length.toLocaleString()} records (of ${ALL_ROWS.length.toLocaleString()})`;
+  document.getElementById('filter-info').textContent = `Showing ${rows.length.toLocaleString()}`;
+
+  // KPIs
+  const offers = rows.map(r=>r.offer_amount).filter(v=>v>0);
+  const incomes = rows.map(r=>r.income).filter(v=>v>0);
+  const cibils = rows.map(r=>r.cibil).filter(v=>v>0);
+  const tenors = rows.map(r=>r.tenor).filter(v=>v>0);
+  document.getElementById('kpi-total').textContent = rows.length.toLocaleString();
+  document.getElementById('kpi-offer').textContent = offers.length ? '₹' + fmtL(Math.round(avg(offers))) : '—';
+  document.getElementById('kpi-income').textContent = incomes.length ? '₹' + fmtL(Math.round(avg(incomes))) : '—';
+  document.getElementById('kpi-cibil').textContent = cibils.length ? avg(cibils).toFixed(1) : '—';
+  document.getElementById('kpi-tenor').textContent = tenors.length ? Math.round(avg(tenors)) : '—';
+
+  // State bars (top 12)
+  const stateMap = {};
+  rows.forEach(r=>{ if(!r.state) return; stateMap[r.state] = stateMap[r.state] || {count:0, offers:[]}; stateMap[r.state].count++; if(r.offer_amount) stateMap[r.state].offers.push(r.offer_amount); });
+  const stateArr = Object.entries(stateMap).sort((a,b)=>b[1].count - a[1].count).slice(0,12);
+  const maxSt = stateArr[0]?.[1]?.count || 1;
+  const stHtml = stateArr.map(([s,v],i=>{
+    const pct = (v.count/maxSt*100).toFixed(1);
+    return `<div class="hbar-item"><div class="hbar-label">${s}</div><div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${COLORS[i%COLORS.length]}"></div></div><div style="width:70px;text-align:right">${v.count.toLocaleString()}</div></div>`;
+  }).join('');
+  document.getElementById('state-bars').innerHTML = stHtml;
+
+  // Decile chart
+  const decMap = {};
+  rows.forEach(r=>{ if(!r.decile) return; decMap[r.decile] = decMap[r.decile]||{count:0,offers:[]}; decMap[r.decile].count++; if(r.offer_amount) decMap[r.decile].offers.push(r.offer_amount); });
+  const deciles = Object.keys(decMap).sort();
+  makeChart('decile-chart', {
+    type:'bar',
+    data: {
+      labels: deciles,
+      datasets: [
+        { label:'Count', data: deciles.map(d=>decMap[d].count), backgroundColor: deciles.map((_,i)=>COLORS[i%COLORS.length]) },
+        { label:'Avg Offer', data: deciles.map(d=>Math.round(avg(decMap[d].offers))), type:'line', borderColor:'#f4a535', backgroundColor:'transparent', yAxisID:'y1' }
+      ]
+    },
+    options: { ...chartDefaults(), responsive:true, maintainAspectRatio:false,
+      scales: { y: { position:'left' }, y1: { position:'right', grid:{display:false}, ticks:{callback:v=>'₹'+fmtL(v)} } }
+    }
+  });
+
+  // Offer distribution (buckets)
+  const buckets = {'<2L':0,'2L-4L':0,'4L-6L':0,'6L-8L':0,'>8L':0};
+  rows.forEach(r=>{ const v=r.offer_amount; if(!v) return; if(v<200000) buckets['<2L']++; else if(v<400000) buckets['2L-4L']++; else if(v<600000) buckets['4L-6L']++; else if(v<800000) buckets['6L-8L']++; else buckets['>8L']++; });
+  makeChart('offer-dist-chart', {type:'bar', data:{labels:Object.keys(buckets), datasets:[{data:Object.values(buckets), backgroundColor:COLORS}]}, options:{...chartDefaults(), maintainAspectRatio:false}});
+
+  // Fuel & Cap reason donuts
+  const fuelMap = {}; rows.forEach(r=>{ if(!r.fuel) return; fuelMap[r.fuel] = (fuelMap[r.fuel]||0)+1; });
+  const fuelLabels = Object.keys(fuelMap).sort((a,b)=>fuelMap[b]-fuelMap[a]);
+  if(fuelLabels.length) makeChart('fuel-chart', {type:'doughnut', data:{labels:fuelLabels,datasets:[{data:fuelLabels.map(k=>fuelMap[k]),backgroundColor:COLORS}]}, options:{plugins:{legend:{position:'right'}},maintainAspectRatio:false}});
+
+  const capMap = {}; rows.forEach(r=>{ if(!r.cap_reason) return; capMap[r.cap_reason] = (capMap[r.cap_reason]||0)+1; });
+  const capLabels = Object.keys(capMap).sort((a,b)=>capMap[b]-capMap[a]);
+  if(capLabels.length) makeChart('cap-chart', {type:'doughnut', data:{labels:capLabels,datasets:[{data:capLabels.map(k=>capMap[k]),backgroundColor:COLORS}]}, options:{plugins:{legend:{position:'right'}},maintainAspectRatio:false}});
+
+  // Top makes bars
+  const makeMap = {}; rows.forEach(r=>{ if(!r.make) return; makeMap[r.make] = (makeMap[r.make]||0)+1; });
+  const makeArr = Object.entries(makeMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxMk = makeArr[0]?.[1] || 1;
+  document.getElementById('make-bars').innerHTML = makeArr.map(([m,c],i)=>`<div class="hbar-item"><div class="hbar-label" style="font-size:12px">${m}</div><div class="hbar-track"><div class="hbar-fill" style="width:${(c/maxMk*100).toFixed(1)}%;background:${COLORS[i%COLORS.length]}"></div></div><div style="width:60px;text-align:right">${c.toLocaleString()}</div></div>`).join('');
+
+  // State table
+  const stateTable = Object.entries(stateMap).map(([s,v])=>({state:s,count:v.count,avgOffer: v.offers.length?Math.round(avg(v.offers)):0, avgIncome: Math.round(avg(rows.filter(r=>r.state===s && r.income).map(r=>r.income))||0), avgCibil: (avg(rows.filter(r=>r.state===s && r.cibil).map(r=>r.cibil))||0).toFixed(1)})).sort((a,b)=>b.count-a.count);
+  document.getElementById('state-tbody').innerHTML = stateTable.map(x=>`<tr><td style="padding:6px">${x.state}</td><td style="text-align:right">${x.count.toLocaleString()}</td><td style="text-align:right">₹${fmtL(x.avgOffer)}</td><td style="text-align:right">₹${fmtL(x.avgIncome)}</td><td style="text-align:right">${x.avgCibil}</td></tr>`).join('');
+
+  // Profile & source charts
+  const profMap = {}; rows.forEach(r=>{ if(!r.profile) return; profMap[r.profile] = (profMap[r.profile]||0)+1; });
+  const profLabels = Object.keys(profMap).sort((a,b)=>profMap[b]-profMap[a]);
+  makeChart('profile-chart', {type:'bar', data:{labels:profLabels,datasets:[{data:profLabels.map(k=>profMap[k]),backgroundColor:COLORS}]}, options:{...chartDefaults(), maintainAspectRatio:false}});
+
+  const srcMap = {}; rows.forEach(r=>{ if(!r.income_source) return; srcMap[r.income_source]=(srcMap[r.income_source]||0)+1; });
+  const srcLabels = Object.keys(srcMap);
+  makeChart('source-chart', {type:'doughnut', data:{labels:srcLabels,datasets:[{data:srcLabels.map(k=>srcMap[k]),backgroundColor:COLORS}]}, options:{plugins:{legend:{position:'right'}}, maintainAspectRatio:false}});
+}
+
+/* --- Export filtered CSV --- */
+document.getElementById('exportCsv').addEventListener('click', ()=>{
+  const rows = getFilteredRows();
+  if(!rows.length) return alert('No rows to export');
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(',')].concat(rows.map(r=>headers.map(h=>JSON.stringify(r[h] ?? '')).join(','))).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'cars24_filtered.csv'; a.click(); URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
+<!-- END DASHBOARD -->
